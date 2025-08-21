@@ -9,8 +9,14 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import { Construct } from 'constructs';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 
-export class ViteCicdStack extends Stack {
-  constructor(scope: Construct, id: string, props?: StackProps) {
+interface CustomStackProps extends cdk.StackProps {
+  githubUser: string;
+  githubRepo: string;
+  githubTokenSecretArn: string;
+}
+
+export class CdkStack extends Stack {
+  constructor(scope: Construct, id: string, props?: CustomStackProps) {
     super(scope, id, props);
 
     // --------------------------
@@ -68,10 +74,10 @@ export class ViteCicdStack extends Stack {
       actions: [
         new codepipeline_actions.GitHubSourceAction({
           actionName: 'GitHub_Source',
-          owner: '<GITHUB_USER>',
-          repo: '<GITHUB_REPO>',
+          owner: props?.githubUser!,
+          repo: props?.githubRepo!,
           branch: 'main',
-          oauthToken: cdk.SecretValue.secretsManager('<GITHUB_TOKEN_SECRET>'),
+          oauthToken: cdk.SecretValue.secretsManager(props?.githubTokenSecretArn!),
           output: sourceOutputA,
           trigger: codepipeline_actions.GitHubTrigger.NONE, // We'll trigger manually on tag
         }),

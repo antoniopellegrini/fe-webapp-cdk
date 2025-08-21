@@ -34,6 +34,7 @@ playwright-report/
 
 .env
 
+cdk/.env
 cdk/node_modules
 
 # CDK asset staging directory
