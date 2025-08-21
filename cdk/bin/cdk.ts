@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib';
 import { CdkStack } from '../lib/cdk-stack';
+import * as dotenv from 'dotenv';
+dotenv.config(); // Load .env file
 
 const app = new cdk.App();
 new CdkStack(app, 'CdkStack', {

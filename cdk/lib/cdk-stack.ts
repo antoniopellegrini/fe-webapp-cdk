@@ -8,6 +8,7 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import { Construct } from 'constructs';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
+import * as cpactions from 'aws-cdk-lib/aws-codepipeline-actions';
 
 interface CustomStackProps extends cdk.StackProps {
   githubUser: string;
@@ -19,6 +20,7 @@ export class CdkStack extends Stack {
   constructor(scope: Construct, id: string, props?: CustomStackProps) {
     super(scope, id, props);
 
+    console.log('props:', props);
     // --------------------------
     // ECR Repository for Node Build Image
     // --------------------------
@@ -77,9 +79,9 @@ export class CdkStack extends Stack {
           owner: props?.githubUser!,
           repo: props?.githubRepo!,
           branch: 'main',
-          oauthToken: cdk.SecretValue.secretsManager(props?.githubTokenSecretArn!),
+          oauthToken: cdk.SecretValue.unsafePlainText(props?.githubTokenSecretArn!),
           output: sourceOutputA,
-          trigger: codepipeline_actions.GitHubTrigger.NONE, // We'll trigger manually on tag
+          trigger: codepipeline_actions.GitHubTrigger.WEBHOOK, // Trigger on push to main
         }),
       ],
     });
@@ -149,18 +151,18 @@ export class CdkStack extends Stack {
       actions: [
         new codepipeline_actions.GitHubSourceAction({
           actionName: 'GitHub_Source',
-          owner: '<GITHUB_USER>',
-          repo: '<GITHUB_REPO>',
-          branch: 'main',
-          oauthToken: cdk.SecretValue.secretsManager('<GITHUB_TOKEN_SECRET>'),
+          owner: props?.githubUser!,
+          repo: props?.githubRepo!,
+          branch: 'refs/tags/*', // Trigger only on tags
+          oauthToken: cdk.SecretValue.unsafePlainText(props?.githubTokenSecretArn!),
           output: sourceOutputB,
-          trigger: codepipeline_actions.GitHubTrigger.POLL, // triggered on tags
+          trigger: codepipeline_actions.GitHubTrigger.WEBHOOK,
         }),
       ],
     });
 
     pipelineB.addStage({
-      stageName: 'Build_Deploy',
+      stageName: 'Build',
       actions: [
         new codepipeline_actions.CodeBuildAction({
           actionName: 'Vite_Build',
@@ -168,6 +170,12 @@ export class CdkStack extends Stack {
           input: sourceOutputB,
           outputs: [new codepipeline.Artifact('ViteBuildOutput')],
         }),
+      ],
+    });
+
+    pipelineB.addStage({
+      stageName: 'Deploy',
+      actions: [
         new codepipeline_actions.S3DeployAction({
           actionName: 'S3_Deploy',
           bucket: deployBucket,
