@@ -14,6 +14,7 @@ interface CustomStackProps extends cdk.StackProps {
   githubUser: string;
   githubRepo: string;
   githubTokenSecretArn: string;
+  isLocalStack: boolean;
 }
 
 export class CdkStack extends Stack {
@@ -79,9 +80,9 @@ export class CdkStack extends Stack {
           owner: props?.githubUser!,
           repo: props?.githubRepo!,
           branch: 'main',
-          oauthToken: cdk.SecretValue.unsafePlainText(props?.githubTokenSecretArn!),
+          oauthToken: props?.isLocalStack ? cdk.SecretValue.unsafePlainText(props?.githubTokenSecretArn!) : cdk.SecretValue.secretsManager(props?.githubTokenSecretArn!),
           output: sourceOutputA,
-          trigger: codepipeline_actions.GitHubTrigger.WEBHOOK, // Trigger on push to main
+          trigger: props?.isLocalStack ? codepipeline_actions.GitHubTrigger.POLL : codepipeline_actions.GitHubTrigger.WEBHOOK, // Trigger on push to main
         }),
       ],
     });
@@ -154,9 +155,9 @@ export class CdkStack extends Stack {
           owner: props?.githubUser!,
           repo: props?.githubRepo!,
           branch: 'refs/tags/*', // Trigger only on tags
-          oauthToken: cdk.SecretValue.unsafePlainText(props?.githubTokenSecretArn!),
+          oauthToken: props?.isLocalStack ? cdk.SecretValue.unsafePlainText(props?.githubTokenSecretArn!) : cdk.SecretValue.secretsManager(props?.githubTokenSecretArn!),
           output: sourceOutputB,
-          trigger: codepipeline_actions.GitHubTrigger.WEBHOOK,
+          trigger: props?.isLocalStack ? codepipeline_actions.GitHubTrigger.POLL : codepipeline_actions.GitHubTrigger.WEBHOOK,
         }),
       ],
     });
