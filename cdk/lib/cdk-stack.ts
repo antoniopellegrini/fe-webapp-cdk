@@ -8,13 +8,11 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import { Construct } from 'constructs';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
-import * as cpactions from 'aws-cdk-lib/aws-codepipeline-actions';
 
 interface CustomStackProps extends cdk.StackProps {
   githubUser: string;
   githubRepo: string;
   githubTokenSecretArn: string;
-  isLocalStack: boolean;
 }
 
 export class CdkStack extends Stack {
@@ -50,10 +48,6 @@ export class CdkStack extends Stack {
         phases: {
           pre_build: {
             commands: [
-              // Check if package.json has changed in the current commit.
-              // Note: This only checks the last commit. For a more robust check across history,
-              // or against the last successfully built image, more complex logic is required
-              // (e.g., storing package.json hash in S3 or ECR image metadata).
               'if git diff --quiet HEAD~1 -- package.json; then export SKIP_DOCKER_BUILD=true; else export SKIP_DOCKER_BUILD=false; fi',
               'echo "SKIP_DOCKER_BUILD is $SKIP_DOCKER_BUILD"',
               'echo Logging in to Amazon ECR...',
@@ -62,7 +56,7 @@ export class CdkStack extends Stack {
           },
           build: {
             commands: [
-              'if [ "$SKIP_DOCKER_BUILD" = "true" ]; then echo "Skipping Docker build as package.json has not changed."; else echo "Building Docker image..."; docker build -t vite-node-build:latest ./cdk/lib/build-image-dockerfile; docker tag vite-node-build:latest ' + nodeEcrRepo.repositoryUri + ':latest; fi',
+              'if [ "$SKIP_DOCKER_BUILD" = "true" ]; then echo "Skipping Docker build as package.json has not changed."; else echo "Building Docker image..."; docker build -t vite-node-build:latest -f ./cdk/lib/build-image-dockerfile/Dockerfile .; docker tag vite-node-build:latest ' + nodeEcrRepo.repositoryUri + ':latest; fi',
             ],
           },
           post_build: {
@@ -128,10 +122,10 @@ export class CdkStack extends Stack {
           actionName: 'GitHub_Source',
           owner: props?.githubUser!,
           repo: props?.githubRepo!,
-          branch: 'refs/tags/*', // Trigger only on tags
-          oauthToken: props?.isLocalStack ? cdk.SecretValue.unsafePlainText(props?.githubTokenSecretArn!) : cdk.SecretValue.secretsManager(props?.githubTokenSecretArn!),
+          branch: 'main', // Trigger on pushes to the main branch
+          oauthToken: cdk.SecretValue.secretsManager(props?.githubTokenSecretArn!),
           output: sourceOutput,
-          trigger: props?.isLocalStack ? codepipeline_actions.GitHubTrigger.POLL : codepipeline_actions.GitHubTrigger.WEBHOOK, // Use POLL for LocalStack, WEBHOOK for AWS
+          trigger: codepipeline_actions.GitHubTrigger.WEBHOOK, // Use WEBHOOK for AWS
         }),
       ],
     });
