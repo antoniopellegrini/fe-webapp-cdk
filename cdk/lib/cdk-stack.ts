@@ -67,7 +67,6 @@ export class CdkStack extends Stack {
     const dockerBuildProject = new codebuild.PipelineProject(this, 'DockerBuildProject', {
       buildSpec: codebuild.BuildSpec.fromObject({
         version: '0.2',
-        
         phases: {
           pre_build: {
             commands: [
@@ -94,6 +93,7 @@ export class CdkStack extends Stack {
         buildImage: codebuild.LinuxBuildImage.STANDARD_6_0,
         privileged: true, // required for Docker
       },
+      cache: codebuild.Cache.local(codebuild.LocalCacheMode.DOCKER_LAYER),
     });
 
     nodeEcrRepo.grantPullPush(dockerBuildProject.role!);
