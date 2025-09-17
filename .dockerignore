@@ -9,8 +9,6 @@ node_modules/
 .prettierrc.json
 eslint.config.js
 jsconfig.json
-package.json
-pnpm-lock.yaml
 vite.config.js
 vitest.config.js
 playwright.config.js
