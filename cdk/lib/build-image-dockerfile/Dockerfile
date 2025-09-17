@@ -5,11 +5,11 @@ WORKDIR /app
 # Install pnpm
 RUN npm install -g pnpm
 
+# Set PNPM home for caching
+ENV PNPM_HOME=/root/.pnpm
+
 # Copy package files first for layer caching
 COPY package.json pnpm-lock.yaml ./
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
-
-# Set working directory for app source
-WORKDIR /app

@@ -67,23 +67,25 @@ export class CdkStack extends Stack {
     const dockerBuildProject = new codebuild.PipelineProject(this, 'DockerBuildProject', {
       buildSpec: codebuild.BuildSpec.fromObject({
         version: '0.2',
+        
         phases: {
           pre_build: {
             commands: [
-              'if git diff --quiet HEAD~1 -- package.json; then export SKIP_DOCKER_BUILD=true; else export SKIP_DOCKER_BUILD=false; fi',
+              'if git rev-parse --quiet --verify HEAD~1 >/dev/null 2>&1; then if git diff --quiet HEAD~1 -- package.json pnpm-lock.yaml; then export SKIP_DOCKER_BUILD=true; else export SKIP_DOCKER_BUILD=false; fi; else export SKIP_DOCKER_BUILD=false; fi',
               'echo "SKIP_DOCKER_BUILD is $SKIP_DOCKER_BUILD"',
               'echo Logging in to Amazon ECR...',
               'aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin ' + nodeEcrRepo.repositoryUri,
+              'docker pull ' + nodeEcrRepo.repositoryUri + ':latest || true',
             ],
           },
           build: {
             commands: [
-              'if [ "$SKIP_DOCKER_BUILD" = "true" ]; then echo "Skipping Docker build as package.json has not changed."; else echo "Building Docker image..."; docker build -t vite-node-build:latest -f ./cdk/lib/build-image-dockerfile/Dockerfile .; docker tag vite-node-build:latest ' + nodeEcrRepo.repositoryUri + ':latest; fi',
+              'if [ "$SKIP_DOCKER_BUILD" = "true" ]; then echo "Skipping Docker build as package.json and pnpm-lock.yaml have not changed."; else echo "Building Docker image..."; docker build --cache-from ' + nodeEcrRepo.repositoryUri + ':latest -t vite-node-build:latest -f ./cdk/lib/build-image-dockerfile/Dockerfile .; docker tag vite-node-build:latest ' + nodeEcrRepo.repositoryUri + ':latest; fi',
             ],
           },
           post_build: {
             commands: [
-              'if [ "$SKIP_DOCKER_BUILD" = "true" ]; then echo "Skipping Docker push as package.json has not changed."; else echo "Pushing Docker image..."; docker push ' + nodeEcrRepo.repositoryUri + ':latest; fi',
+              'if [ "$SKIP_DOCKER_BUILD" = "true" ]; then echo "Skipping Docker push as package.json and pnpm-lock.yaml have not changed."; else echo "Pushing Docker image..."; docker push ' + nodeEcrRepo.repositoryUri + ':latest; fi',
             ],
           },
         },
