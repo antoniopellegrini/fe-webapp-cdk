@@ -8,6 +8,8 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import { Construct } from 'constructs';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as iam from 'aws-cdk-lib/aws-iam';
 
 interface CustomStackProps extends cdk.StackProps {
   githubUser: string;
@@ -36,8 +38,28 @@ export class CdkStack extends Stack {
 
     // CloudFront distribution
     const distribution = new cloudfront.Distribution(this, 'ViteDistribution', {
-      defaultBehavior: { origin: new origins.S3Origin(deployBucket) },
+      defaultBehavior: { origin: origins.S3BucketOrigin.withOriginAccessControl(deployBucket) },
+      defaultRootObject: 'index.html',
+      errorResponses: [
+        {
+          httpStatus: 404,
+          responseHttpStatus: 200,
+          responsePagePath: '/index.html',
+        },
+      ],
     });
+
+    // Add bucket policy to allow CloudFront access
+    deployBucket.addToResourcePolicy(new iam.PolicyStatement({
+      actions: ['s3:GetObject'],
+      resources: [deployBucket.arnForObjects('*')],
+      principals: [new iam.ServicePrincipal('cloudfront.amazonaws.com')],
+      conditions: {
+        StringEquals: {
+          'AWS:SourceArn': `arn:aws:cloudfront::${this.account}:distribution/${distribution.distributionId}`,
+        },
+      },
+    }));
 
     // --------------------------
     // CodeBuild Project for Docker Image Build
@@ -88,8 +110,8 @@ export class CdkStack extends Stack {
           },
           build: {
             commands: [
-              'npm ci',
-              'npm run build',
+              'pnpm install --frozen-lockfile',
+              'pnpm run build',
             ],
           },
         },
@@ -103,6 +125,32 @@ export class CdkStack extends Stack {
         privileged: true,
       },
     });
+
+    // --------------------------
+    // Lambda for CloudFront Invalidation
+    // --------------------------
+    const invalidateLambda = new lambda.Function(this, 'CloudFrontInvalidatorLambda', {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      handler: 'cloudfront-invalidator.handler',
+      code: lambda.Code.fromAsset('./lib/lambda/'),
+      environment: {
+        CLOUDFRONT_DISTRIBUTION_ID: distribution.distributionId,
+      },
+    });
+
+    // Grant the Lambda function permissions to invalidate CloudFront and interact with CodePipeline
+    invalidateLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: [
+        'cloudfront:CreateInvalidation',
+        'cloudfront:GetInvalidation',
+        'codepipeline:PutJobSuccessResult',
+        'codepipeline:PutJobFailureResult',
+      ],
+      resources: [
+        `arn:aws:cloudfront::${this.account}:distribution/${distribution.distributionId}`,
+        `arn:aws:codepipeline:${this.region}:${this.account}:*`, // Grant access to all pipelines in the account/region
+      ],
+    }));
 
     // --------------------------
     // Unified Pipeline: Build Docker Image & Deploy Vite App
@@ -162,11 +210,10 @@ export class CdkStack extends Stack {
           bucket: deployBucket,
           input: new codepipeline.Artifact('ViteBuildOutput'),
         }),
-        new codepipeline_actions.CloudFormationCreateUpdateStackAction({
+        new codepipeline_actions.LambdaInvokeAction({
           actionName: 'Invalidate_CloudFront',
-          templatePath: new codepipeline.Artifact('ViteBuildOutput').atPath('template.yml'), // dummy template, optional
-          stackName: 'ViteCloudFrontInvalidation',
-          adminPermissions: true,
+          lambda: invalidateLambda,
+          // No inputs or outputs needed as the Lambda directly interacts with CloudFront
         }),
       ],
     });
